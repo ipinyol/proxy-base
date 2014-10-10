@@ -7,9 +7,11 @@ import java.util.*;
 public class ProxyThread extends Thread {
     private Socket socket = null;
     private static final int BUFFER_SIZE = 32768;
-    public ProxyThread(Socket socket) {
+    private Properties prop = null; 
+    public ProxyThread(Socket socket, Properties prop) {
         super("ProxyThread");
         this.socket = socket;
+        this.prop = prop;
     }
 
     public void run() {
@@ -24,9 +26,9 @@ public class ProxyThread extends Thread {
             BufferedReader in = new BufferedReader(
 		new InputStreamReader(socket.getInputStream()));
 
-            String inputLine, outputLine;
+            String inputLine;
             int cnt = 0;
-            String urlToCall = "";
+            String postfix = "";
             ///////////////////////////////////
             //begin get request from client
             while ((inputLine = in.readLine()) != null) {
@@ -39,9 +41,9 @@ public class ProxyThread extends Thread {
                 //parse the first line of the request to find the url
                 if (cnt == 0) {
                     String[] tokens = inputLine.split(" ");
-                    urlToCall = tokens[1];
+                    postfix = tokens[1];
                     //can redirect this to output log
-                    System.out.println("Request for : " + urlToCall);
+                    System.out.println("Request for : " + postfix);
                 }
 
                 cnt++;
@@ -52,11 +54,12 @@ public class ProxyThread extends Thread {
 
             BufferedReader rd = null;
             try {
-                //System.out.println("sending request
-		//to real server for url: "
-                //        + urlToCall);
-                ///////////////////////////////////
                 //begin send request to server, get response from server
+            	String urlToCall="";
+            	urlToCall = prop.getProperty(ProxyBase.DEFAULT_PROTOCOL)+"://";
+            	urlToCall += prop.getProperty(ProxyBase.DEFAULT_HOST) + ":";
+            	urlToCall += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT);
+            	urlToCall += postfix; // postfix already includes "/"
                 URL url = new URL(urlToCall);
                 URLConnection conn = url.openConnection();
                 conn.setDoInput(true);
@@ -82,7 +85,6 @@ public class ProxyThread extends Thread {
                 //end send request to server, get response from server
                 ///////////////////////////////////
 
-                ///////////////////////////////////
                 //begin send response to client
                 byte by[] = new byte[ BUFFER_SIZE ];
                 int index = is.read( by, 0, BUFFER_SIZE );
@@ -93,8 +95,6 @@ public class ProxyThread extends Thread {
                 }
                 out.flush();
 
-                //end send response to client
-                ///////////////////////////////////
             } catch (Exception e) {
                 //can redirect this to error log
                 System.err.println("Encountered exception: " + e);

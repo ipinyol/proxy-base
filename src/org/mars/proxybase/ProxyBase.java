@@ -2,17 +2,24 @@ package org.mars.proxybase;
 
 import java.net.*;
 import java.io.*;
+import java.util.Properties;
 
 public class ProxyBase {
+	
+	public static String DEFAULT_PORT_IN = "dport_in";
+	public static String DEFAULT_PORT_OUT = "dport_out";
+	public static String DEFAULT_HOST = "dhost";
+	public static String DEFAULT_PROTOCOL = "dprotocol";
+	
     public static void main(String[] args) throws IOException {
         ServerSocket serverSocket = null;
         boolean listening = true;
-
-        int port = 10000;	//default
+    	Properties prop = readProperties();
+    	int port = 80;
         try {
-            port = Integer.parseInt(args[0]);
+            port = Integer.parseInt(prop.getProperty(DEFAULT_PORT_IN));
         } catch (Exception e) {
-            System.out.println(args[0] + " is not a valid port. Listening to port " + port);
+            System.out.println(args[0] + " is not a valid port. Setting default port to " + port);
         }
 
         try {
@@ -24,8 +31,32 @@ public class ProxyBase {
         }
 
         while (listening) {
-            new ProxyThread(serverSocket.accept()).start();
+            new ProxyThread(serverSocket.accept(),prop).start();
         }
         serverSocket.close();
+    }
+    
+    public static Properties readProperties() {
+    	InputStream input = null;
+    	Properties prop = new Properties();
+    	try {
+    		input = new FileInputStream("config.properties");
+    		prop.load(input);
+    	} catch (IOException ex) {
+    		System.out.println("Properties file not loaded!. Setting default values manually.");
+    		prop.setProperty(DEFAULT_PORT_IN, "80");
+    		prop.setProperty(DEFAULT_PORT_IN, "8080");
+    		prop.setProperty(DEFAULT_HOST, "127.0.0.1");
+    		prop.setProperty(DEFAULT_PROTOCOL, "http");
+    	} finally {
+    		if(input!=null) {
+    			try {
+    				input.close();
+    			} catch (Exception e) {
+    				System.out.println("Not able to close properties file");
+    			}
+    		}
+    	}
+    	return prop;
     }
 }
