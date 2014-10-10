@@ -16,17 +16,22 @@ public class ProxyBase {
         boolean listening = true;
     	Properties prop = readProperties();
     	int port = 80;
+    	String tempPort=prop.getProperty(DEFAULT_PORT_IN);
+    	System.out.println(args.length);
+    	if (args.length>0) {
+    		tempPort=args[0];
+    	}
         try {
-            port = Integer.parseInt(prop.getProperty(DEFAULT_PORT_IN));
+            port = Integer.parseInt(tempPort);
         } catch (Exception e) {
-            System.out.println(args[0] + " is not a valid port. Setting default port to " + port);
+            System.out.println(tempPort + " is not a valid port. Setting default port to " + port);
         }
 
         try {
             serverSocket = new ServerSocket(port);
             System.out.println("ProxyBase listening on port: " + port);
         } catch (IOException e) {
-            System.err.println("Could not listen on port: " + args[0]);
+            System.err.println("Could not listen on port: " + port);
             System.exit(-1);
         }
 
@@ -40,12 +45,12 @@ public class ProxyBase {
     	InputStream input = null;
     	Properties prop = new Properties();
     	try {
-    		input = new FileInputStream("config.properties");
+    		input = ProxyBase.class.getClassLoader().getResourceAsStream("org/mars/proxybase/config.properties");
     		prop.load(input);
     	} catch (IOException ex) {
     		System.out.println("Properties file not loaded!. Setting default values manually.");
     		prop.setProperty(DEFAULT_PORT_IN, "80");
-    		prop.setProperty(DEFAULT_PORT_IN, "8080");
+    		prop.setProperty(DEFAULT_PORT_OUT, "8080");
     		prop.setProperty(DEFAULT_HOST, "127.0.0.1");
     		prop.setProperty(DEFAULT_PROTOCOL, "http");
     	} finally {

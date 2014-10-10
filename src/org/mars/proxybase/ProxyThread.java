@@ -84,7 +84,6 @@ public class ProxyThread extends Thread {
                 }
                 //end send request to server, get response from server
                 ///////////////////////////////////
-
                 //begin send response to client
                 byte by[] = new byte[ BUFFER_SIZE ];
                 int index = is.read( by, 0, BUFFER_SIZE );
