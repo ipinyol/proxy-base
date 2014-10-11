@@ -65,11 +65,6 @@ public class ProxyThread extends Thread {
                 conn.setDoInput(true);
                 //not doing HTTP posts
                 conn.setDoOutput(false);
-                System.out.println("Type is: " + conn.getContentType());
-                System.out.println("content length: " + conn.getContentLength());
-                System.out.println("allowed user interaction: " + conn.getAllowUserInteraction());
-                System.out.println("content encoding: " + conn.getContentEncoding());
-                System.out.println("content type: " + conn.getContentType());
 
                 // Get the response
                 InputStream is = null;
@@ -127,11 +122,15 @@ public class ProxyThread extends Thread {
 	    		if (entry.getKey()!=null) {
 	    			out.writeBytes(entry.getKey());
 	    			points=":";
+	    			System.out.print(entry.getKey());
 	    		}
 	    		if(entry.getValue().size()>0) {
-	    			out.writeBytes(points + entry.getValue().get(0));
+	    			out.writeBytes(points + entry.getValue().get(0)+ "\r\n");
+	    			System.out.print(points + entry.getValue().get(0)+"\r\n");
 	    		}
 	    	}
+	    	out.writeBytes("\r\n");
+	    	System.out.print("\r\n");
     	} catch (Exception e) {
     		e.printStackTrace();
     	}
