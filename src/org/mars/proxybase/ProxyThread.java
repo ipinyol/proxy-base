@@ -83,15 +83,13 @@ public class ProxyThread extends Thread {
                     }
                 }
                 //end send request to server, get response from server
-                ///////////////////////////////////
-                //begin send response to client
-                byte by[] = new byte[ BUFFER_SIZE ];
-                int index = is.read( by, 0, BUFFER_SIZE );
-                while ( index != -1 )
-                {
-                  out.write( by, 0, index );
-                  index = is.read( by, 0, BUFFER_SIZE );
-                }
+                
+                // begin send response headers to client
+                
+                //out.writeBytes(conn.getContentEncoding());
+                writeHeaders(conn, out);
+                //begin send response content to client
+                writeOutput(is, out);
                 out.flush();
 
             } catch (Exception e) {
@@ -119,5 +117,37 @@ public class ProxyThread extends Thread {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+    
+    private static void writeHeaders(URLConnection conn, DataOutputStream out) {
+    	Map<String, List<String>> map = conn.getHeaderFields();
+    	try {
+	    	for (Map.Entry<String, List<String>> entry : map.entrySet()) {
+	    		String points="";
+	    		if (entry.getKey()!=null) {
+	    			out.writeBytes(entry.getKey());
+	    			points=":";
+	    		}
+	    		if(entry.getValue().size()>0) {
+	    			out.writeBytes(points + entry.getValue().get(0));
+	    		}
+	    	}
+    	} catch (Exception e) {
+    		e.printStackTrace();
+    	}
+    }
+    
+    private static void writeOutput(InputStream is, DataOutputStream out) {
+    	byte by[] = new byte[ BUFFER_SIZE ];
+    	try {
+	        int index = is.read( by, 0, BUFFER_SIZE );
+	        while ( index != -1 )
+	        {
+	          out.write( by, 0, index );
+	          index = is.read( by, 0, BUFFER_SIZE );
+	        }
+    	} catch (Exception e) {
+    		e.printStackTrace();
+    	}
     }
 }
