@@ -112,16 +112,16 @@ public class ProxyThread extends Thread {
             	urlToCall += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT);
             	urlToCall += postfix; // postfix already includes "/"
                 URL url = new URL(urlToCall);
-                URLConnection conn = url.openConnection();
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setDoInput(true);
-                
+                conn.setAllowUserInteraction(true);
                 /*
                 if (operation.equals(ProxyBase.GET)) {
                 	conn.setDoOutput(false);	
                 } else {
                 	conn.setDoOutput(true);	
                 }*/
-                
+                boolean isChuncked = false;
                 //write the headers
                 for(String key:headerMap.keySet()) {
                 	String value = headerMap.get(key);
@@ -140,23 +140,28 @@ public class ProxyThread extends Thread {
                 
                 // Get the response
                 InputStream is = null;
-                HttpURLConnection huc = (HttpURLConnection)conn;
-                if (conn.getContentLength() > 0) {
+                conn.connect();
+                if (conn.getContentLength() > 0 || true) {
                     try {
                         is = conn.getInputStream();
                         rd = new BufferedReader(new InputStreamReader(is));
                     } catch (IOException ioe) {
                         System.out.println("********* IO EXCEPTION **********: " + ioe);
                     }
-                }
+                } 
                 //end send request to server, get response from server
                 
                 // begin send response headers to client
                 
                 //out.writeBytes(conn.getContentEncoding());
-                writeHeaders(conn, out);
+                isChuncked = writeHeaders(conn, out);
                 //begin send response content to client
-                writeOutput(is, out);
+                if (isChuncked) {
+                	System.out.println("CHUUUUUU");
+                	writeOutputChuncked(is, out);
+                } else {
+                	writeOutput(is, out);
+                }
                 out.flush();
 
             } catch (Exception e) {
@@ -186,8 +191,9 @@ public class ProxyThread extends Thread {
         }
     }
     
-    private static void writeHeaders(URLConnection conn, DataOutputStream out) {
+    private static boolean writeHeaders(HttpURLConnection conn, DataOutputStream out) {
     	Map<String, List<String>> map = conn.getHeaderFields();
+    	boolean isChunked=false;
     	try {
 	    	for (Map.Entry<String, List<String>> entry : map.entrySet()) {
 	    		String points="";
@@ -198,14 +204,16 @@ public class ProxyThread extends Thread {
 	    		}
 	    		if(entry.getValue().size()>0) {
 	    			out.writeBytes(points + entry.getValue().get(0)+ "\r\n");
+	    			isChunked = isChunked || entry.getValue().get(0).equals("chunked");
 	    			System.out.print(points + entry.getValue().get(0)+"\r\n");
 	    		}
 	    	}
-	    	out.writeBytes("\r\n");
+	    	out.writeBytes("\r\n");		// The White 
 	    	System.out.print("\r\n");
     	} catch (Exception e) {
     		e.printStackTrace();
     	}
+    	return isChunked;
     }
     
     private static void writeOutput(InputStream is, DataOutputStream out) {
@@ -213,14 +221,32 @@ public class ProxyThread extends Thread {
 	    	byte by[] = new byte[ BUFFER_SIZE ];
 	    	try {
 		        int index = is.read( by, 0, BUFFER_SIZE );
-		        while ( index != -1 )
-		        {
+		        while ( index != -1 ) {
 		          out.write( by, 0, index );
 		          index = is.read( by, 0, BUFFER_SIZE );
 		        }
 	    	} catch (Exception e) {
 	    		e.printStackTrace();
 	    	}
+    	} else {
+    		System.out.println("InputStream is null!!!!");
+    	}
+    }
+    
+    private static void writeOutputChuncked(InputStream is, DataOutputStream out) {
+    	if (is!=null) {
+	    	byte by[] = new byte[ BUFFER_SIZE ];
+	    	try {
+		        int index = is.read(by);
+		        while ( index != -1 ) {
+		          out.write( by, 0, index );
+		          index = is.read(by);
+		        }
+	    	} catch (Exception e) {
+	    		e.printStackTrace();
+	    	}
+    	} else {
+    		System.out.println("InputStream is null!!!!");
     	}
     }
 }
