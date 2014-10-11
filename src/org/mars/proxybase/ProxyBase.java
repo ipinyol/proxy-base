@@ -10,6 +10,8 @@ public class ProxyBase {
 	public static String DEFAULT_PORT_OUT = "dport_out";
 	public static String DEFAULT_HOST = "dhost";
 	public static String DEFAULT_PROTOCOL = "dprotocol";
+	public static String POST = "POST";
+	public static String GET = "GET";
 	
     public static void main(String[] args) throws IOException {
         ServerSocket serverSocket = null;
