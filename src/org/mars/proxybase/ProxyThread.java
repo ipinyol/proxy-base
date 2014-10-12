@@ -69,6 +69,7 @@ public class ProxyThread extends Thread {
             }*/
             int postDataI = -1;
             Map<String,String> headerMap = new HashMap<String,String>();
+            StringBuffer dataToSent = new StringBuffer();
             while ((inputLine = in.readLine()) != null && (inputLine.length() != 0)) {
                 System.out.println("HTTP-HEADER: " + inputLine);
                 if (inputLine.indexOf("Content-Length:") > -1) {
@@ -83,14 +84,23 @@ public class ProxyThread extends Thread {
                     operation = tokens[0];	// POST | GET | PUT 
                     System.out.println(postfix);
                     System.out.println(operation);
+                    dataToSent.append(inputLine+"\r\n");
                 } else {
                 	String headers[] = inputLine.split(":");
                 	if(headers.length==2) {
                 		headerMap.put(headers[0], headers[1]);
                 	}
+                	if (headers[0].equals("Host")) {
+                		String newLine = "Host:" + prop.getProperty(ProxyBase.DEFAULT_HOST)+":";
+                		newLine += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT) + "\r\n";
+                		dataToSent.append(newLine);
+                	} else {
+                		dataToSent.append(inputLine+"\r\n");
+                	}
                 }
                 cnt++;
             }
+            dataToSent.append("\r\n");
             String postData = "";
             // read the post data, only if postDataI > 0 
             if (postDataI > 0) {
@@ -102,7 +112,47 @@ public class ProxyThread extends Thread {
             //end get request from client
             ///////////////////////////////////
 
-
+            // Send data to new port
+            int portDestiny = Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
+            Socket socketDestiny = new Socket(prop.getProperty(ProxyBase.DEFAULT_HOST), portDestiny);
+            DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
+            //DataInputStream is = new DataInputStream(socketDestiny.getInputStream());
+            
+            System.out.println("Writing to PORT");
+            System.out.println(dataToSent.toString());
+            os.writeBytes(dataToSent.toString());
+            if (postDataI>0) {
+            	os.writeBytes(postData);
+            }
+            os.flush();
+            ////////////////////
+            
+            // Get the response
+            BufferedReader is = new BufferedReader(new InputStreamReader(socketDestiny.getInputStream()));
+            StringBuffer dataToReturn = new StringBuffer();
+            System.out.println("Waiting for response");
+            while ((inputLine = is.readLine()) != null && (inputLine.length() != 0)) {
+            	dataToReturn.append(inputLine + "\r\n");
+            	System.out.println(inputLine + "\r\n");
+            }
+            out.writeBytes(dataToReturn.toString()+"\r\n");
+            
+            char by[] = new char[ BUFFER_SIZE ];
+            int index = is.read(by, 0, BUFFER_SIZE);
+	        while ( index != -1 ) {
+	        	out.writeChars(new String(by));
+	        	index = is.read(by, 0, BUFFER_SIZE);
+	        }
+	        out.writeBytes("\r\n");
+            //dataToReturn.append("\r\n");
+            System.out.println(dataToReturn.toString());
+            ////////////////////
+            is.close();
+            os.close();
+            socketDestiny.close();
+            // Return to output
+            out.flush();
+            /*
             BufferedReader rd = null;
             try {
                 //begin send request to server, get response from server
@@ -120,7 +170,7 @@ public class ProxyThread extends Thread {
                 	conn.setDoOutput(false);	
                 } else {
                 	conn.setDoOutput(true);	
-                }*/
+                }
                 boolean isChuncked = false;
                 //write the headers
                 for(String key:headerMap.keySet()) {
@@ -162,6 +212,7 @@ public class ProxyThread extends Thread {
                 } else {
                 	writeOutput(is, out);
                 }
+                
                 out.flush();
 
             } catch (Exception e) {
@@ -170,12 +221,12 @@ public class ProxyThread extends Thread {
                 //encountered error - just send nothing back, so
                 //processing can continue
                 out.writeBytes("");
-            }
+            }*/
 
             //close out all resources
-            if (rd != null) {
-                rd.close();
-            }
+            //if (rd != null) {
+            //    rd.close();
+            //}
             if (out != null) {
                 out.close();
             }
@@ -239,14 +290,19 @@ public class ProxyThread extends Thread {
 	    	try {
 		        int index = is.read(by);
 		        while ( index != -1 ) {
-		          out.write( by, 0, index );
-		          index = is.read(by);
+		        	String aux = ""+index;
+		        	out.writeChars(aux + "\r\n");
+		        	out.write( by, 0, index );
+		        	index = is.read(by);
 		        }
+		        out.writeChars("0\r\n");
+		        out.writeChars("\r\n");
 	    	} catch (Exception e) {
 	    		e.printStackTrace();
 	    	}
     	} else {
     		System.out.println("InputStream is null!!!!");
     	}
+    	
     }
 }
