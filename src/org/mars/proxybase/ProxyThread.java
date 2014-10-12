@@ -114,7 +114,10 @@ public class ProxyThread extends Thread {
 
             // Send data to new port
             int portDestiny = Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
-            Socket socketDestiny = new Socket(prop.getProperty(ProxyBase.DEFAULT_HOST), portDestiny);
+            Socket socketDestiny = new Socket();
+            String ipAddress =  prop.getProperty(ProxyBase.DEFAULT_HOST);
+            socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
+            
             DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
             //DataInputStream is = new DataInputStream(socketDestiny.getInputStream());
             
@@ -131,27 +134,38 @@ public class ProxyThread extends Thread {
             BufferedReader is = new BufferedReader(new InputStreamReader(socketDestiny.getInputStream()));
             StringBuffer dataToReturn = new StringBuffer();
             System.out.println("Waiting for response");
+            Integer lenData=null;
             while ((inputLine = is.readLine()) != null && (inputLine.length() != 0)) {
             	dataToReturn.append(inputLine + "\r\n");
+            	if (inputLine.indexOf("Content-Length:") > -1) {
+                    lenData = new Integer(
+                    		inputLine.substring(
+                    				inputLine.indexOf("Content-Length:") + 16,
+                    				inputLine.length())).intValue();
+                }
             	System.out.println(inputLine + "\r\n");
             }
-            out.writeBytes(dataToReturn.toString()+"\r\n");
+            //System.out.println("Writing headers");
+            //out.writeBytes(dataToReturn.toString()+ "\r\n");
+            dataToReturn.append("\r\n");
             
-            char by[] = new char[ BUFFER_SIZE ];
-            int index = is.read(by, 0, BUFFER_SIZE);
-	        while ( index != -1 ) {
-	        	out.writeChars(new String(by));
-	        	index = is.read(by, 0, BUFFER_SIZE);
-	        }
-	        out.writeBytes("\r\n");
+            if (lenData!=null) {
+            	char by[] = new char[ lenData ];
+            	is.read(by, 0, lenData);
+            	dataToReturn.append(new String(by));
+            } else {
+            	//TODO: Chuncked data!
+            }
+            System.out.println("Writing everything");
+	        out.writeBytes(dataToReturn.toString()+"\r\n");
+	        out.flush();
             //dataToReturn.append("\r\n");
-            System.out.println(dataToReturn.toString());
             ////////////////////
             is.close();
             os.close();
             socketDestiny.close();
             // Return to output
-            out.flush();
+            
             /*
             BufferedReader rd = null;
             try {
