@@ -131,6 +131,7 @@ public class ProxyThread extends Thread {
             ////////////////////
             
             // Get the response
+            /*
             BufferedReader is = new BufferedReader(new InputStreamReader(socketDestiny.getInputStream()));
             StringBuffer dataToReturn = new StringBuffer();
             System.out.println("Waiting for response");
@@ -145,8 +146,20 @@ public class ProxyThread extends Thread {
                 }
             	System.out.println(inputLine + "\r\n");
             }
+            */
+            
+            DataInputStream ins=new DataInputStream(new BufferedInputStream(socketDestiny.getInputStream()));
+            Header header = readHeader(ins);
+            Content content = readContent(ins, header);
+            
+            // Write the response
+            writeResponse(header, content, out);
+            out.flush();
+            ins.close();
+            socketDestiny.close();
             //System.out.println("Writing headers");
             //out.writeBytes(dataToReturn.toString()+ "\r\n");
+            /*
             dataToReturn.append("\r\n");
             
             if (lenData!=null) {
@@ -256,6 +269,118 @@ public class ProxyThread extends Thread {
         }
     }
     
+    private void writeResponse(Header header, Content content, DataOutputStream out) {
+        List<byte[]> headers = header.getRawHeaderList();
+        List<byte[]> contents = content.getRawContentList();
+        try {
+            for(byte[] arr:headers) {
+                out.write(arr);
+            }
+            out.writeBytes("\r\n");
+            for(byte[] arr:contents) {
+                out.write(arr);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private Content readContent(DataInputStream ins, Header header) {
+        Content out = new Content();
+        long len = header.getContentLength();
+        long pointer = 0;
+        try {
+            while (len-pointer >=BUFFER_SIZE) {
+                byte[] chunk = new byte[BUFFER_SIZE];
+                ins.read(chunk, 0, BUFFER_SIZE);
+                out.addArray(chunk);
+                len = len + BUFFER_SIZE;
+            }
+            if (len-pointer>0) {
+                byte[] chunk = new byte[(int)(len-pointer)];
+                out.addArray(chunk);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return out;
+    }
+    
+    private Header readHeader(DataInputStream ins) {
+        Header out = new Header();
+        try {
+            byte[] oldInput = new byte[2];
+            oldInput[0] = 0;
+            oldInput[1] = 0;
+            byte[] input = new byte[2];
+            ins.read(input, 0, 2);
+            int bufferSize = 0;
+            byte[] buffer = new byte[BUFFER_SIZE];
+            StringBuffer line = new StringBuffer();
+            while(!isBreak(oldInput) || !isBreak(input)) {
+                // Save the read data
+                buffer[bufferSize] = input[0];
+                buffer[bufferSize+1] = input[1];
+                bufferSize = (bufferSize +2) % BUFFER_SIZE;
+                if (bufferSize==0) {
+                    out.addRawArray(buffer);
+                }
+                
+                // Parse the content
+                if (isBreak(input)) {
+                    System.out.println("isBreak!!!");
+                    String lineStr = line.toString();
+                    System.out.println(lineStr);
+                    if (lineStr.contains(":")) {
+                        // We are not in first line
+                        String [] tokens = lineStr.split(":");
+                        if (tokens[0].equals("Content-Length")) {
+                            Long len = Long.parseLong(tokens[1]);
+                            System.out.println("Detected: " + len);
+                            out.setContentLength(len);
+                        } else if (tokens[0].equals("Host")) {
+                            System.out.println("Detected: " + tokens[1] + ":" +tokens[2]);
+                            out.setHost(tokens[1] + ":" +tokens[2]);
+                        }
+                    } else {
+                        // we are in the first line of HTTP protocol
+                        String [] tokens = lineStr.split(" ");
+                        out.setOperation(tokens[0]);
+                        out.setUrl(tokens[1]);
+                        System.out.println("Detected: " + tokens[1]);
+                    }
+
+                    line = new StringBuffer();
+                } else {
+                    line.append(new String(input, "UTF-8"));
+                }
+
+                oldInput[0] = input[0];
+                oldInput[1] = input[1];
+                ins.read(input, 0, 2);
+            }
+            System.out.println("out");
+            if (bufferSize!=0) {
+                byte []last = new byte[bufferSize];
+                System.arraycopy(buffer, 0, last, 0, bufferSize);
+                out.addRawArray(last);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return out;
+    }
+    
+    /**
+     * Return true of val[0]=='\r' and val[1]=='\n' (0x13 and 0x10 respectively)
+     * @param val
+     * @return
+     */
+    private boolean isBreak(byte[] val) {
+        return (val[0]==13 && val[1]==10);
+    }
+    
+    
     private static boolean writeHeaders(HttpURLConnection conn, DataOutputStream out) {
     	Map<String, List<String>> map = conn.getHeaderFields();
     	boolean isChunked=false;
@@ -318,5 +443,69 @@ public class ProxyThread extends Thread {
     		System.out.println("InputStream is null!!!!");
     	}
     	
+    }
+    
+    private class Content {
+        private List<byte[]> rawContentList = new ArrayList<byte[]>();
+        
+        public void setRawContentList(List<byte[]> rawContentList) {
+            this.rawContentList = rawContentList;
+        }
+        
+        public List<byte[]> getRawContentList() {
+            return this.rawContentList;
+        }
+        
+        public void addArray(byte[] array) {
+            if (rawContentList==null) {
+                this.rawContentList = new ArrayList<byte[]>();
+            }
+            this.rawContentList.add(array);
+        }
+    }
+    
+    private class Header {
+        private Content rawHeaderList = new Content();
+        private String host = null;
+        private Long contentLength = null;      
+        private String operation= null;         // GET, POST
+        private String url = null;
+        
+        public void setRawHeaderList(List<byte[]> rawHeaderList) {
+            this.rawHeaderList.setRawContentList(rawHeaderList);
+        }
+        
+        public List<byte[]> getRawHeaderList() {
+            return this.rawHeaderList.getRawContentList();
+        }
+        
+        public void addRawArray(byte[] array) {
+            this.rawHeaderList.addArray(array);
+        }
+        
+        public String getHost() {
+            return host;
+        }
+        public void setHost(String host) {
+            this.host = host;
+        }
+        public Long getContentLength() {
+            return contentLength;
+        }
+        public void setContentLength(Long contentLength) {
+            this.contentLength = contentLength;
+        }
+        public String getOperation() {
+            return operation;
+        }
+        public void setOperation(String operation) {
+            this.operation = operation;
+        }
+        public String getUrl() {
+            return url;
+        }
+        public void setUrl(String url) {
+            this.url = url;
+        }
     }
 }
