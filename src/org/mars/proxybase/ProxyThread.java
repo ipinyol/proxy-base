@@ -274,6 +274,8 @@ public class ProxyThread extends Thread {
         List<byte[]> contents = content.getRawContentList();
         try {
             for(byte[] arr:headers) {
+            	String str = new String(arr,"UTF-8");
+            	System.out.println(str);
                 out.write(arr);
             }
             out.writeBytes("\r\n");
@@ -294,7 +296,7 @@ public class ProxyThread extends Thread {
                 byte[] chunk = new byte[BUFFER_SIZE];
                 ins.read(chunk, 0, BUFFER_SIZE);
                 out.addArray(chunk);
-                len = len + BUFFER_SIZE;
+                pointer = pointer + BUFFER_SIZE;
             }
             if (len-pointer>0) {
                 byte[] chunk = new byte[(int)(len-pointer)];
@@ -309,33 +311,30 @@ public class ProxyThread extends Thread {
     private Header readHeader(DataInputStream ins) {
         Header out = new Header();
         try {
-            byte[] oldInput = new byte[2];
-            oldInput[0] = 0;
-            oldInput[1] = 0;
-            byte[] input = new byte[2];
-            ins.read(input, 0, 2);
+            byte[] oldInput = new byte[3];
+            oldInput[0]=0;
+            oldInput[1]=0;
+            oldInput[2]=0;
+            byte input = 0;
+            input = ins.readByte();
             int bufferSize = 0;
             byte[] buffer = new byte[BUFFER_SIZE];
             StringBuffer line = new StringBuffer();
-            while(!isBreak(oldInput) || !isBreak(input)) {
+            while(!isBreakEnd(oldInput, input)) {
                 // Save the read data
-                buffer[bufferSize] = input[0];
-                buffer[bufferSize+1] = input[1];
-                bufferSize = (bufferSize +2) % BUFFER_SIZE;
+                buffer[bufferSize] = input;
+                bufferSize = (bufferSize +1) % BUFFER_SIZE;
                 if (bufferSize==0) {
                     out.addRawArray(buffer);
                 }
-                
-                // Parse the content
-                if (isBreak(input)) {
-                    System.out.println("isBreak!!!");
-                    String lineStr = line.toString();
-                    System.out.println(lineStr);
+                // Parse the content                
+                if (isBreak(oldInput, input)) {
+                	String lineStr = line.toString();
                     if (lineStr.contains(":")) {
                         // We are not in first line
                         String [] tokens = lineStr.split(":");
                         if (tokens[0].equals("Content-Length")) {
-                            Long len = Long.parseLong(tokens[1]);
+                            Long len = Long.parseLong(tokens[1].trim());
                             System.out.println("Detected: " + len);
                             out.setContentLength(len);
                         } else if (tokens[0].equals("Host")) {
@@ -352,15 +351,18 @@ public class ProxyThread extends Thread {
 
                     line = new StringBuffer();
                 } else {
-                    line.append(new String(input, "UTF-8"));
+                	byte[] aux = new byte[1];
+                	aux[0] = input;
+                    line.append(new String(aux, "UTF-8"));
                 }
 
-                oldInput[0] = input[0];
-                oldInput[1] = input[1];
-                ins.read(input, 0, 2);
+                oldInput[0] = oldInput[1];
+                oldInput[1] = oldInput[2];
+                oldInput[2] = input;
+                input = ins.readByte();
             }
-            System.out.println("out");
             if (bufferSize!=0) {
+            	System.out.println("bufferSize: " + bufferSize);
                 byte []last = new byte[bufferSize];
                 System.arraycopy(buffer, 0, last, 0, bufferSize);
                 out.addRawArray(last);
@@ -376,10 +378,16 @@ public class ProxyThread extends Thread {
      * @param val
      * @return
      */
-    private boolean isBreak(byte[] val) {
-        return (val[0]==13 && val[1]==10);
+    private boolean isBreakEnd(byte[] oldInput, byte input) {
+    	boolean b1 = (oldInput[0]==(byte)'\r' && oldInput[1]==(byte)'\n');
+    	boolean b2 = (oldInput[2]==(byte)'\r' && input==(byte)'\n');
+        return b1 && b2;
     }
     
+    private boolean isBreak(byte[] oldInput, byte input) {
+    	boolean b1 = (oldInput[2]==(byte)'\r' && input==(byte)'\n');
+        return b1;
+    }
     
     private static boolean writeHeaders(HttpURLConnection conn, DataOutputStream out) {
     	Map<String, List<String>> map = conn.getHeaderFields();
