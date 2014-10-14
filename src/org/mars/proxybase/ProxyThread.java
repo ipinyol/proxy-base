@@ -21,52 +21,20 @@ public class ProxyThread extends Thread {
         //send response to user
 
         try {
-            DataOutputStream out =
-		new DataOutputStream(socket.getOutputStream());
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            //BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            DataInputStream in = new DataInputStream(socket.getInputStream());
 			//InputStream in = socket.getInputStream();
             String inputLine;
             int cnt = 0;
             String postfix = "";
             String operation="";
+            
+            Header headerReq = readHeader(in);
+            Content contentReq = readContent(in, headerReq);
             ///////////////////////////////////
             //begin get request from client
             /*
-            byte[] b = new byte[BUFFER_SIZE];
-            StringBuilder sb = new StringBuilder();
-            System.out.println("Before while");
-            while ((in.read(b)) >= 0) {
-            	System.out.println("In while");	
-            	sb.append(b);
-            	System.out.println(sb.toString());
-            }
-            String input = sb.toString();
-            System.out.println(input);
-            String[] lines = input.split("\r\n");
-            
-            postfix = lines[0].split(" ")[1];	// The end point
-            operation = lines[0].split(" ")[0];	// POST | GET | PUT | DELETE...
-            */
-            /*
-            while ((inputLine = in.readLine()) != null) {
-                try {
-                    StringTokenizer tok = new StringTokenizer(inputLine);
-                    tok.nextToken();
-                } catch (Exception e) {
-                    break;
-                }
-                //parse the first line of the request to find the url
-                if (cnt == 0) {
-                    String[] tokens = inputLine.split(" ");
-                    postfix = tokens[1];	// The end point
-                    operation = tokens[0];	// POST | GET | PUT | DELETE...
-                    //can redirect this to output log
-                    //System.out.println("Request for : " + postfix);
-                    System.out.println(tokens[0]);
-                }
-                System.out.println("DD:" + inputLine);
-                cnt++;
-            }*/
             int postDataI = -1;
             Map<String,String> headerMap = new HashMap<String,String>();
             StringBuffer dataToSent = new StringBuffer();
@@ -82,8 +50,6 @@ public class ProxyThread extends Thread {
                 	String[] tokens = inputLine.split(" ");
                     postfix = tokens[1];	// The end point
                     operation = tokens[0];	// POST | GET | PUT 
-                    System.out.println(postfix);
-                    System.out.println(operation);
                     dataToSent.append(inputLine+"\r\n");
                 } else {
                 	String headers[] = inputLine.split(":");
@@ -91,14 +57,6 @@ public class ProxyThread extends Thread {
                 		headerMap.put(headers[0], headers[1]);
                 	}
                 	dataToSent.append(inputLine+"\r\n");
-                	/*
-                	if (headers[0].equals("Host")) {
-                		String newLine = "Host:" + prop.getProperty(ProxyBase.DEFAULT_HOST)+":";
-                		newLine += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT) + "\r\n";
-                		dataToSent.append(newLine);
-                	} else {
-                		dataToSent.append(inputLine+"\r\n");
-                	}*/
                 }
                 cnt++;
             }
@@ -110,22 +68,27 @@ public class ProxyThread extends Thread {
                 in.read(charArray, 0, postDataI);
                 postData = new String(charArray);
             }
-            System.out.println("POST DATA:" + postData);
+            //System.out.println("POST DATA:" + postData);
             //end get request from client
             ///////////////////////////////////
-
+            */
+            
             // Send data to new port
             int portDestiny = Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
             Socket socketDestiny = new Socket();
             String ipAddress =  prop.getProperty(ProxyBase.DEFAULT_HOST);
             socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
             DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
-            System.out.println("Writing to PORT");
+            
+            writeResponse(headerReq, contentReq, os);
+            
+            /*
             System.out.println(dataToSent.toString());
             os.writeBytes(dataToSent.toString());
             if (postDataI>0) {
             	os.writeBytes(postData);
             }
+            */
             os.flush();
             
             // Read the response
@@ -144,9 +107,10 @@ public class ProxyThread extends Thread {
             if (in != null) {
                 in.close();
             }
+            /*
             if (socket != null) {
                 socket.close();
-            }
+            }*/
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -164,6 +128,9 @@ public class ProxyThread extends Thread {
             }
             //out.writeBytes("\r\n");
             for(byte[] arr:contents) {
+                //String aa = new String(arr,"UTF-8");
+                //System.out.println(aa);
+                System.out.println("WW");
                 out.write(arr);
             }
         } catch (Exception e) {
@@ -177,11 +144,11 @@ public class ProxyThread extends Thread {
             // Read data by length
             long len = header.getContentLength();
             readBufferedContent(ins,len,out);
-        } else if (header.isChunked) {
+        } else if (header.isChunked()) {
             // read data by chunks
             out = readContentByChunk(ins);
         }
-        // If no length and no chunked, then no data to process
+        // If no length and no chunk, then no data to process
         return out;
     }
     
@@ -213,7 +180,7 @@ public class ProxyThread extends Thread {
         out.addArray(input);
         while(input.length>2) {
             long lenChunk = getLenChunk(input);
-            System.out.println("LEN CHUNKKKKK: " + lenChunk);
+            //System.out.println("LEN CHUNKKKKK: " + lenChunk);
             if (lenChunk>0) {
                 readBufferedContent(ins,lenChunk, out);
                 input = readBytesUntil(ins, endLine); // We read the \r\n of the end of the chunk
@@ -287,31 +254,26 @@ public class ProxyThread extends Thread {
                     if (lineStr.contains(":")) {
                         // We are not in first line
                         String [] tokens = lineStr.split(":");
-                        if (tokens[0].equals("Content-Length")) {
+                        if (tokens[0].toLowerCase().trim().equals("content-length")) {
                             Long len = Long.parseLong(tokens[1].trim());
-                            System.out.println("Detected: " + len);
                             out.setContentLength(len);
-                        } else if (tokens[0].equals("Host")) {
-                            System.out.println("Detected: " + tokens[1] + ":" +tokens[2]);
+                        } else if (tokens[0].toLowerCase().trim().equals("host")) {
                             out.setHost(tokens[1] + ":" +tokens[2]);
-                        } else if (tokens[0].equals("Transfer-Encoding")) {
-                            out.setChunked(tokens[1].trim().equals("chunked"));
+                        } else if (tokens[0].toLowerCase().equals("transfer-encoding")) {
+                            out.setChunked(tokens[1].toLowerCase().trim().equals("chunked"));
                         }
                     } else {
                         // we are in the first line of HTTP protocol
                         String [] tokens = lineStr.split(" ");
                         out.setOperation(tokens[0]);
                         out.setUrl(tokens[1]);
-                        System.out.println("Detected: " + tokens[1]);
                     }
-
                     line = new StringBuffer();
                 } else {
                 	byte[] aux = new byte[1];
                 	aux[0] = input;
                     line.append(new String(aux, "UTF-8"));
                 }
-
                 oldInput[0] = oldInput[1];
                 oldInput[1] = oldInput[2];
                 oldInput[2] = input;
