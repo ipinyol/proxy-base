@@ -90,13 +90,15 @@ public class ProxyThread extends Thread {
                 	if(headers.length==2) {
                 		headerMap.put(headers[0], headers[1]);
                 	}
+                	dataToSent.append(inputLine+"\r\n");
+                	/*
                 	if (headers[0].equals("Host")) {
                 		String newLine = "Host:" + prop.getProperty(ProxyBase.DEFAULT_HOST)+":";
                 		newLine += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT) + "\r\n";
                 		dataToSent.append(newLine);
                 	} else {
                 		dataToSent.append(inputLine+"\r\n");
-                	}
+                	}*/
                 }
                 cnt++;
             }
@@ -117,10 +119,7 @@ public class ProxyThread extends Thread {
             Socket socketDestiny = new Socket();
             String ipAddress =  prop.getProperty(ProxyBase.DEFAULT_HOST);
             socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
-            
             DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
-            //DataInputStream is = new DataInputStream(socketDestiny.getInputStream());
-            
             System.out.println("Writing to PORT");
             System.out.println(dataToSent.toString());
             os.writeBytes(dataToSent.toString());
@@ -128,26 +127,8 @@ public class ProxyThread extends Thread {
             	os.writeBytes(postData);
             }
             os.flush();
-            ////////////////////
             
-            // Get the response
-            /*
-            BufferedReader is = new BufferedReader(new InputStreamReader(socketDestiny.getInputStream()));
-            StringBuffer dataToReturn = new StringBuffer();
-            System.out.println("Waiting for response");
-            Integer lenData=null;
-            while ((inputLine = is.readLine()) != null && (inputLine.length() != 0)) {
-            	dataToReturn.append(inputLine + "\r\n");
-            	if (inputLine.indexOf("Content-Length:") > -1) {
-                    lenData = new Integer(
-                    		inputLine.substring(
-                    				inputLine.indexOf("Content-Length:") + 16,
-                    				inputLine.length())).intValue();
-                }
-            	System.out.println(inputLine + "\r\n");
-            }
-            */
-            
+            // Read the response
             DataInputStream ins=new DataInputStream(new BufferedInputStream(socketDestiny.getInputStream()));
             Header header = readHeader(ins);
             Content content = readContent(ins, header);
@@ -157,103 +138,6 @@ public class ProxyThread extends Thread {
             out.flush();
             ins.close();
             socketDestiny.close();
-            //System.out.println("Writing headers");
-            //out.writeBytes(dataToReturn.toString()+ "\r\n");
-            /*
-            dataToReturn.append("\r\n");
-            
-            if (lenData!=null) {
-            	char by[] = new char[ lenData ];
-            	is.read(by, 0, lenData);
-            	dataToReturn.append(new String(by));
-            } else {
-            	//TODO: Chuncked data!
-            }
-            System.out.println("Writing everything");
-	        out.writeBytes(dataToReturn.toString()+"\r\n");
-	        out.flush();
-            //dataToReturn.append("\r\n");
-            ////////////////////
-            is.close();
-            os.close();
-            socketDestiny.close();
-            // Return to output
-            
-            /*
-            BufferedReader rd = null;
-            try {
-                //begin send request to server, get response from server
-            	String urlToCall="";
-            	urlToCall = prop.getProperty(ProxyBase.DEFAULT_PROTOCOL)+"://";
-            	urlToCall += prop.getProperty(ProxyBase.DEFAULT_HOST) + ":";
-            	urlToCall += prop.getProperty(ProxyBase.DEFAULT_PORT_OUT);
-            	urlToCall += postfix; // postfix already includes "/"
-                URL url = new URL(urlToCall);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setDoInput(true);
-                conn.setAllowUserInteraction(true);
-                /*
-                if (operation.equals(ProxyBase.GET)) {
-                	conn.setDoOutput(false);	
-                } else {
-                	conn.setDoOutput(true);	
-                }
-                boolean isChuncked = false;
-                //write the headers
-                for(String key:headerMap.keySet()) {
-                	String value = headerMap.get(key);
-                	conn.setRequestProperty(key, value);
-                }
-               
-                //Write the output data if necessary
-                if(postDataI>0) {
-                	conn.setDoOutput(true);
-                	OutputStreamWriter wr = new OutputStreamWriter(conn.getOutputStream());
-                	wr.write(postData);
-                	wr.flush();
-                } else {
-                	conn.setDoOutput(false);
-                }
-                
-                // Get the response
-                InputStream is = null;
-                conn.connect();
-                if (conn.getContentLength() > 0 || true) {
-                    try {
-                        is = conn.getInputStream();
-                        rd = new BufferedReader(new InputStreamReader(is));
-                    } catch (IOException ioe) {
-                        System.out.println("********* IO EXCEPTION **********: " + ioe);
-                    }
-                } 
-                //end send request to server, get response from server
-                
-                // begin send response headers to client
-                
-                //out.writeBytes(conn.getContentEncoding());
-                isChuncked = writeHeaders(conn, out);
-                //begin send response content to client
-                if (isChuncked) {
-                	System.out.println("CHUUUUUU");
-                	writeOutputChuncked(is, out);
-                } else {
-                	writeOutput(is, out);
-                }
-                
-                out.flush();
-
-            } catch (Exception e) {
-                //can redirect this to error log
-                System.err.println("Encountered exception: " + e);
-                //encountered error - just send nothing back, so
-                //processing can continue
-                out.writeBytes("");
-            }*/
-
-            //close out all resources
-            //if (rd != null) {
-            //    rd.close();
-            //}
             if (out != null) {
                 out.close();
             }
@@ -278,7 +162,7 @@ public class ProxyThread extends Thread {
             	System.out.println(str);
                 out.write(arr);
             }
-            out.writeBytes("\r\n");
+            //out.writeBytes("\r\n");
             for(byte[] arr:contents) {
                 out.write(arr);
             }
@@ -289,19 +173,89 @@ public class ProxyThread extends Thread {
     
     private Content readContent(DataInputStream ins, Header header) {
         Content out = new Content();
-        long len = header.getContentLength();
+        if (header.getContentLength()!=null) {
+            // Read data by length
+            long len = header.getContentLength();
+            readBufferedContent(ins,len,out);
+        } else if (header.isChunked) {
+            // read data by chunks
+            out = readContentByChunk(ins);
+        }
+        // If no length and no chunked, then no data to process
+        return out;
+    }
+    
+    private void readBufferedContent(DataInputStream ins, long len, Content content) {
         long pointer = 0;
         try {
             while (len-pointer >=BUFFER_SIZE) {
                 byte[] chunk = new byte[BUFFER_SIZE];
                 ins.read(chunk, 0, BUFFER_SIZE);
-                out.addArray(chunk);
+                content.addArray(chunk);
                 pointer = pointer + BUFFER_SIZE;
             }
             if (len-pointer>0) {
                 byte[] chunk = new byte[(int)(len-pointer)];
-                out.addArray(chunk);
+                ins.read(chunk, 0, (int)(len-pointer));
+                content.addArray(chunk);
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private Content readContentByChunk(DataInputStream ins) {
+        Content out = new Content();
+        byte[] endLine = new byte[2];
+        endLine[0] = (byte) '\r';
+        endLine[1] = (byte) '\n';
+        byte[] input = readBytesUntil(ins, endLine);
+        out.addArray(input);
+        while(input.length>2) {
+            long lenChunk = getLenChunk(input);
+            System.out.println("LEN CHUNKKKKK: " + lenChunk);
+            if (lenChunk>0) {
+                readBufferedContent(ins,lenChunk, out);
+                input = readBytesUntil(ins, endLine); // We read the \r\n of the end of the chunk
+                out.addArray(input);
+            }
+            input = readBytesUntil(ins, endLine); // Again, we read the next number line
+            out.addArray(input);
+        }
+        return out;
+    }
+    
+    private long getLenChunk(byte[] input) {
+        byte[] hexNum = new byte[input.length-2];
+        System.arraycopy(input, 0, hexNum, 0, input.length-2);
+        long hexNumLong=0;
+        try {
+            String hexNumStr = new String(hexNum,"UTF-8");
+            hexNumLong = Long.parseLong(hexNumStr, 16);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return hexNumLong;
+    }
+    
+    // For short stuff
+    private byte[] readBytesUntil(DataInputStream ins, byte[] endLine) {
+        byte oldInput = 0;
+        byte [] buffer = new byte[BUFFER_SIZE];
+        byte [] out = null;
+        int len= 0;
+        try {
+            byte input = ins.readByte();
+            while (oldInput!=endLine[0] || input!=endLine[1]) {
+                buffer[len] = input;
+                len++;
+                oldInput=input;
+                input = ins.readByte();
+            }
+            buffer[len] = input;
+            len++;
+            out = new byte[len];
+            System.arraycopy(buffer, 0, out, 0, len);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -340,6 +294,8 @@ public class ProxyThread extends Thread {
                         } else if (tokens[0].equals("Host")) {
                             System.out.println("Detected: " + tokens[1] + ":" +tokens[2]);
                             out.setHost(tokens[1] + ":" +tokens[2]);
+                        } else if (tokens[0].equals("Transfer-Encoding")) {
+                            out.setChunked(tokens[1].trim().equals("chunked"));
                         }
                     } else {
                         // we are in the first line of HTTP protocol
@@ -361,9 +317,12 @@ public class ProxyThread extends Thread {
                 oldInput[2] = input;
                 input = ins.readByte();
             }
-            if (bufferSize!=0) {
-            	System.out.println("bufferSize: " + bufferSize);
-                byte []last = new byte[bufferSize];
+            buffer[bufferSize] = input;
+            bufferSize = (bufferSize +1) % BUFFER_SIZE;
+            if (bufferSize==0) {
+                out.addRawArray(buffer);
+            } else {
+            	byte []last = new byte[bufferSize];
                 System.arraycopy(buffer, 0, last, 0, bufferSize);
                 out.addRawArray(last);
             }
@@ -387,70 +346,6 @@ public class ProxyThread extends Thread {
     private boolean isBreak(byte[] oldInput, byte input) {
     	boolean b1 = (oldInput[2]==(byte)'\r' && input==(byte)'\n');
         return b1;
-    }
-    
-    private static boolean writeHeaders(HttpURLConnection conn, DataOutputStream out) {
-    	Map<String, List<String>> map = conn.getHeaderFields();
-    	boolean isChunked=false;
-    	try {
-	    	for (Map.Entry<String, List<String>> entry : map.entrySet()) {
-	    		String points="";
-	    		if (entry.getKey()!=null) {
-	    			out.writeBytes(entry.getKey());
-	    			points=":";
-	    			System.out.print(entry.getKey());
-	    		}
-	    		if(entry.getValue().size()>0) {
-	    			out.writeBytes(points + entry.getValue().get(0)+ "\r\n");
-	    			isChunked = isChunked || entry.getValue().get(0).equals("chunked");
-	    			System.out.print(points + entry.getValue().get(0)+"\r\n");
-	    		}
-	    	}
-	    	out.writeBytes("\r\n");		// The White 
-	    	System.out.print("\r\n");
-    	} catch (Exception e) {
-    		e.printStackTrace();
-    	}
-    	return isChunked;
-    }
-    
-    private static void writeOutput(InputStream is, DataOutputStream out) {
-    	if (is!=null) {
-	    	byte by[] = new byte[ BUFFER_SIZE ];
-	    	try {
-		        int index = is.read( by, 0, BUFFER_SIZE );
-		        while ( index != -1 ) {
-		          out.write( by, 0, index );
-		          index = is.read( by, 0, BUFFER_SIZE );
-		        }
-	    	} catch (Exception e) {
-	    		e.printStackTrace();
-	    	}
-    	} else {
-    		System.out.println("InputStream is null!!!!");
-    	}
-    }
-    
-    private static void writeOutputChuncked(InputStream is, DataOutputStream out) {
-    	if (is!=null) {
-	    	byte by[] = new byte[ BUFFER_SIZE ];
-	    	try {
-		        int index = is.read(by);
-		        while ( index != -1 ) {
-		        	String aux = ""+index;
-		        	out.writeChars(aux + "\r\n");
-		        	out.write( by, 0, index );
-		        	index = is.read(by);
-		        }
-		        out.writeChars("0\r\n");
-		        out.writeChars("\r\n");
-	    	} catch (Exception e) {
-	    		e.printStackTrace();
-	    	}
-    	} else {
-    		System.out.println("InputStream is null!!!!");
-    	}
-    	
     }
     
     private class Content {
@@ -478,6 +373,7 @@ public class ProxyThread extends Thread {
         private Long contentLength = null;      
         private String operation= null;         // GET, POST
         private String url = null;
+        private boolean isChunked=false;
         
         public void setRawHeaderList(List<byte[]> rawHeaderList) {
             this.rawHeaderList.setRawContentList(rawHeaderList);
@@ -509,6 +405,14 @@ public class ProxyThread extends Thread {
         public void setOperation(String operation) {
             this.operation = operation;
         }
+        public boolean isChunked() {
+            return isChunked;
+        }
+
+        public void setChunked(boolean isChunked) {
+            this.isChunked = isChunked;
+        }
+
         public String getUrl() {
             return url;
         }
