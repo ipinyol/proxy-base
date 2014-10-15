@@ -152,15 +152,11 @@ public class ProxyThread extends Thread {
         out.addArray(input);
         while(input.length>2) {
             long lenChunk = getLenChunk(input);
-            System.out.println("LEN CHUNKKKKK: " + lenChunk);
             if (lenChunk>0) {
                 readBufferedContent(ins,lenChunk, out);
                 input = readBytesUntil(ins, endLine); // We read the \r\n of the end of the chunk
-                System.out.println("It should be 2: " + input.length);
                 if(input.length!=2) {
                 	try {
-                		String aux = new String (input, "UTF-8");
-                		System.out.println(aux);
                 	} catch (Exception e){ e.printStackTrace();};
                 }
                 out.addArray(input);
