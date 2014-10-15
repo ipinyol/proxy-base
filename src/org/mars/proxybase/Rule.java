@@ -22,7 +22,7 @@ public class Rule {
 			System.out.println(rule.paramsToStar("{PORT}/hola"));
 			System.out.println(rule.paramsToStar("/pepe/{PORT}"));
 			System.out.println(rule.paramsToStar("/pepe/hola"));
-			rule.setFire("/pepe/{PORT}/hola/{CACA}/{ULL}/hola");
+			rule.setFire("{HOST}/pepe/{PORT}/hola/{CACA}/{ULL}/hola");
 			System.out.println(rule.isExecuted("/pepe/1111/hola/qqq/ppp/hola"));
 			System.out.println(rule.isExecuted("/pepe"));
 			System.out.println(rule.isExecuted("/pepe/hola/1111/qqq/ppp/hola"));
@@ -30,11 +30,17 @@ public class Rule {
 			System.out.println(rule.isExecuted("sddsddfsdfsdfsdfsdf"));
 			System.out.println(rule.isExecuted("/pepe//hola///hola"));
 			
-			Appliance a = rule.applyRule("/pepe/1123/hola/9999/8888/hola");
+			rule.setPort("{PORT}");
+			rule.setHost("{HOST}:{PORT}");
+			rule.setUrl("/pepe/{PORT}/{ULL}/hola/{CACA}");
+			Appliance a = rule.applyRule("127.0.0.1/pepe/8080/hola/ENDPOINT/MIDPOINT/hola");
 			Map<String, String> map = a.getMap();
 			for(String key:map.keySet()) {
 				System.out.println(key + " : " + map.get(key));
 			}
+			System.out.println("HOST: " + a.getHost());
+			System.out.println("PORT: " + a.getPort());
+			System.out.println("URL: " + a.getUrl());
 			/*
 			for (Elem e:rule.elems) {
 				System.out.println(e.getKey()+ ", " + e.getIndex() + ", " + e.getLastChar());
@@ -76,6 +82,9 @@ public class Rule {
 			out.setPort(this.getPortInteger());
 			out.setUrl(this.getUrl());
 		} else {
+			String hostApp = this.getHost();
+			String portApp = this.getPort();
+			String urlApp = this.getUrl();
 			int pivotReal = 0;
 			int pivotRegExp = 0;
 			for (Elem e: elems) {
@@ -88,14 +97,20 @@ public class Rule {
 					value = input.substring(realOffset);
 				} else {
 					int j = input.indexOf(e.getLastChar(), realOffset);
-					value = input.substring(realOffset, j+1);
-					pivotReal = j+1;
+					value = input.substring(realOffset, j);
+					pivotReal = j;
 					pivotRegExp = i + e.getKey().length();
 				}
 				map.put(e.getKey(), value);
+				hostApp = hostApp.replace(e.getKey(), value);
+				portApp = portApp.replace(e.getKey(), value);
+				urlApp = urlApp.replace(e.getKey(), value);
 			}
+			out.setMap(map);
+			out.setHost(hostApp);
+			out.setPort(Integer.parseInt(portApp));
+			out.setUrl(urlApp);
 		}
-		out.setMap(map);
 		return out;
 	}
 	
