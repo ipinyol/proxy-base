@@ -15,63 +15,14 @@ public class ProxyThread extends Thread {
     }
 
     public void run() {
-        //get input from user
-        //send request to server
-        //get response from server
-        //send response to user
 
         try {
             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            //BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             DataInputStream in = new DataInputStream(socket.getInputStream());
-			//InputStream in = socket.getInputStream();
-            String inputLine;
-            int cnt = 0;
-            String postfix = "";
-            String operation="";
             
+            // Getting incoming data 
             Header headerReq = readHeader(in);
             Content contentReq = readContent(in, headerReq);
-            ///////////////////////////////////
-            //begin get request from client
-            /*
-            int postDataI = -1;
-            Map<String,String> headerMap = new HashMap<String,String>();
-            StringBuffer dataToSent = new StringBuffer();
-            while ((inputLine = in.readLine()) != null && (inputLine.length() != 0)) {
-                System.out.println("HTTP-HEADER: " + inputLine);
-                if (inputLine.indexOf("Content-Length:") > -1) {
-                    postDataI = new Integer(
-                    		inputLine.substring(
-                    				inputLine.indexOf("Content-Length:") + 16,
-                    				inputLine.length())).intValue();
-                }
-                if (cnt == 0) {
-                	String[] tokens = inputLine.split(" ");
-                    postfix = tokens[1];	// The end point
-                    operation = tokens[0];	// POST | GET | PUT 
-                    dataToSent.append(inputLine+"\r\n");
-                } else {
-                	String headers[] = inputLine.split(":");
-                	if(headers.length==2) {
-                		headerMap.put(headers[0], headers[1]);
-                	}
-                	dataToSent.append(inputLine+"\r\n");
-                }
-                cnt++;
-            }
-            dataToSent.append("\r\n");
-            String postData = "";
-            // read the post data, only if postDataI > 0 
-            if (postDataI > 0) {
-                char[] charArray = new char[postDataI];
-                in.read(charArray, 0, postDataI);
-                postData = new String(charArray);
-            }
-            //System.out.println("POST DATA:" + postData);
-            //end get request from client
-            ///////////////////////////////////
-            */
             
             // Send data to new port
             int portDestiny = Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
@@ -81,14 +32,6 @@ public class ProxyThread extends Thread {
             DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
             
             writeResponse(headerReq, contentReq, os);
-            
-            /*
-            System.out.println(dataToSent.toString());
-            os.writeBytes(dataToSent.toString());
-            if (postDataI>0) {
-            	os.writeBytes(postData);
-            }
-            */
             os.flush();
             
             // Read the response
@@ -99,6 +42,8 @@ public class ProxyThread extends Thread {
             // Write the response
             writeResponse(header, content, out);
             out.flush();
+            
+            // Close channels and sockets
             ins.close();
             socketDestiny.close();
             if (out != null) {
@@ -107,10 +52,10 @@ public class ProxyThread extends Thread {
             if (in != null) {
                 in.close();
             }
-            /*
+            
             if (socket != null) {
                 socket.close();
-            }*/
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -122,15 +67,14 @@ public class ProxyThread extends Thread {
         List<byte[]> contents = content.getRawContentList();
         try {
             for(byte[] arr:headers) {
-            	String str = new String(arr,"UTF-8");
-            	System.out.println(str);
+            	//String str = new String(arr,"UTF-8");
+            	//System.out.println(str);
                 out.write(arr);
             }
             //out.writeBytes("\r\n");
             for(byte[] arr:contents) {
                 //String aa = new String(arr,"UTF-8");
                 //System.out.println(aa);
-                System.out.println("WW");
                 out.write(arr);
             }
         } catch (Exception e) {
@@ -157,18 +101,46 @@ public class ProxyThread extends Thread {
         try {
             while (len-pointer >=BUFFER_SIZE) {
                 byte[] chunk = new byte[BUFFER_SIZE];
-                ins.read(chunk, 0, BUFFER_SIZE);
+                chunk = readBytes(ins, BUFFER_SIZE);
                 content.addArray(chunk);
                 pointer = pointer + BUFFER_SIZE;
             }
             if (len-pointer>0) {
                 byte[] chunk = new byte[(int)(len-pointer)];
-                ins.read(chunk, 0, (int)(len-pointer));
+                chunk = readBytes(ins, (int)(len-pointer));
                 content.addArray(chunk);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * Wrapper to DataInputStream.read, to make sure that the number of read bytes 
+     * is exactly what is passed by parameter
+     * @param ins
+     * @param len
+     * @return
+     */
+    private byte [] readBytes(DataInputStream ins, int len) {
+    	int readSoFar = 0;
+    	byte[] out = new byte[len];
+    	boolean done = false;
+    	try {
+    		int readNow = ins.read(out, readSoFar, len-readSoFar);
+	    	while(readSoFar<len || done) {
+	    		if (readNow==-1) {
+	    			done=true;
+	    		} else {
+	    			readSoFar += readNow;
+	    			Thread.sleep(1); // Sleep for one millisecond
+	    			readNow = ins.read(out, readSoFar, len-readSoFar);
+	    		}
+	    	}
+    	} catch (Exception e) {
+    		e.printStackTrace();
+    	}
+    	return out;
     }
     
     private Content readContentByChunk(DataInputStream ins) {
@@ -180,10 +152,17 @@ public class ProxyThread extends Thread {
         out.addArray(input);
         while(input.length>2) {
             long lenChunk = getLenChunk(input);
-            //System.out.println("LEN CHUNKKKKK: " + lenChunk);
+            System.out.println("LEN CHUNKKKKK: " + lenChunk);
             if (lenChunk>0) {
                 readBufferedContent(ins,lenChunk, out);
                 input = readBytesUntil(ins, endLine); // We read the \r\n of the end of the chunk
+                System.out.println("It should be 2: " + input.length);
+                if(input.length!=2) {
+                	try {
+                		String aux = new String (input, "UTF-8");
+                		System.out.println(aux);
+                	} catch (Exception e){ e.printStackTrace();};
+                }
                 out.addArray(input);
             }
             input = readBytesUntil(ins, endLine); // Again, we read the next number line
@@ -214,6 +193,7 @@ public class ProxyThread extends Thread {
         try {
             byte input = ins.readByte();
             while (oldInput!=endLine[0] || input!=endLine[1]) {
+            	if (len==0) System.out.println(input);
                 buffer[len] = input;
                 len++;
                 oldInput=input;
@@ -221,6 +201,7 @@ public class ProxyThread extends Thread {
             }
             buffer[len] = input;
             len++;
+            System.out.println("LEN in readBytesUntil:" + len + " Last char:" + input);
             out = new byte[len];
             System.arraycopy(buffer, 0, out, 0, len);
         } catch (Exception e) {
@@ -294,11 +275,6 @@ public class ProxyThread extends Thread {
         return out;
     }
     
-    /**
-     * Return true of val[0]=='\r' and val[1]=='\n' (0x13 and 0x10 respectively)
-     * @param val
-     * @return
-     */
     private boolean isBreakEnd(byte[] oldInput, byte input) {
     	boolean b1 = (oldInput[0]==(byte)'\r' && oldInput[1]==(byte)'\n');
     	boolean b2 = (oldInput[2]==(byte)'\r' && input==(byte)'\n');
