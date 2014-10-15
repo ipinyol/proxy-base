@@ -282,6 +282,11 @@ public class ProxyThread extends Thread {
         return b1;
     }
     
+    /**
+     * Class that keeps the content of Http requests and responses in batches
+     * @author ipinyol
+     *
+     */
     private class Content {
         private List<byte[]> rawContentList = new ArrayList<byte[]>();
         
@@ -301,6 +306,11 @@ public class ProxyThread extends Thread {
         }
     }
     
+    /**
+     * Class that keeps some interesting information of the Http headers
+     * @author ipinyol
+     *
+     */
     private class Header {
         private Content rawHeaderList = new Content();
         private String host = null;
