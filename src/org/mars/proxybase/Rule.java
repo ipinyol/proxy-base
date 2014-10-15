@@ -30,6 +30,12 @@ public class Rule {
 			System.out.println(rule.isExecuted("sddsddfsdfsdfsdfsdf"));
 			System.out.println(rule.isExecuted("/pepe//hola///hola"));
 			
+			Appliance a = rule.applyRule("/pepe/1123/hola/9999/8888/hola");
+			Map<String, String> map = a.getMap();
+			for(String key:map.keySet()) {
+				System.out.println(key + " : " + map.get(key));
+			}
+			/*
 			for (Elem e:rule.elems) {
 				System.out.println(e.getKey()+ ", " + e.getIndex() + ", " + e.getLastChar());
 			}
@@ -48,7 +54,7 @@ public class Rule {
 			rule.setFire("hola/");
 			for (Elem e:rule.elems) {
 				System.out.println(e.getKey()+ ", " + e.getIndex());
-			}
+			}*/
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -70,23 +76,26 @@ public class Rule {
 			out.setPort(this.getPortInteger());
 			out.setUrl(this.getUrl());
 		} else {
-			int pivot = 0;
-			String partial=this.fire;
+			int pivotReal = 0;
+			int pivotRegExp = 0;
 			for (Elem e: elems) {
-				int i=0;
+				int i=this.fire.indexOf(e.getKey(), pivotRegExp);
+				int offset = i - pivotRegExp;
+				int realOffset = pivotReal+offset;
 				String value = null;
-				if (e.getLastChar() == null) {
-					value = input.substring(e.getIndex());
+				if (e.getLastChar()==null) {
+					// Here we will be at the of the elements!
+					value = input.substring(realOffset);
 				} else {
-					i = input.indexOf(e.getLastChar(), e.getIndex()+1);
-					value = input.substring(pivot, i);
+					int j = input.indexOf(e.getLastChar(), realOffset);
+					value = input.substring(realOffset, j+1);
+					pivotReal = j+1;
+					pivotRegExp = i + e.getKey().length();
 				}
-				//input = input.replace(oldChar, newChar)
-				//TODO: FINISH!!!
-				
-				
+				map.put(e.getKey(), value);
 			}
 		}
+		out.setMap(map);
 		return out;
 	}
 	
@@ -227,6 +236,16 @@ public class Rule {
 		private int port;
 		private String host;
 		private String url;
+		private Map<String, String> map = new HashMap<String,String>();
+		
+		public void setMap(Map<String, String> map) {
+			this.map = map;
+		}
+		
+		public Map<String, String> getMap() {
+			return this.map;
+		}
+		
 		public int getPort() {
 			return port;
 		}
