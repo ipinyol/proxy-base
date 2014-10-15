@@ -1,6 +1,8 @@
 package org.mars.proxybase;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Rule {
@@ -9,7 +11,8 @@ public class Rule {
 	private String host=null;
 	private String url=null;
 	private String regExp = null; 	// It is computed when setFire is called. 
-									// It remains null if parse errors exists.
+									// It remains null if parse errors exist
+	private List<Elem> elems = null;
 	
 	public static void main(String[] args) {
 		System.out.println("Testing paramsToStar");
@@ -27,6 +30,25 @@ public class Rule {
 			System.out.println(rule.isExecuted("sddsddfsdfsdfsdfsdf"));
 			System.out.println(rule.isExecuted("/pepe//hola///hola"));
 			
+			for (Elem e:rule.elems) {
+				System.out.println(e.getKey()+ ", " + e.getIndex() + ", " + e.getLastChar());
+			}
+			
+			rule.setFire("{PORT}/hola");
+			for (Elem e:rule.elems) {
+				System.out.println(e.getKey()+ ", " + e.getIndex() + ", " + e.getLastChar());
+			}
+			
+			rule.setFire("hola/{PORT}");
+			for (Elem e:rule.elems) {
+				if (e.getLastChar()==null) { System.out.println("Ohh yes"); }
+				System.out.println(e.getKey()+ ", " + e.getIndex());
+			}
+			
+			rule.setFire("hola/");
+			for (Elem e:rule.elems) {
+				System.out.println(e.getKey()+ ", " + e.getIndex());
+			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -43,7 +65,28 @@ public class Rule {
 		if (!isExecuted(input)) return null;
 		Appliance out = new Appliance();
 		Map<String,String> map = new HashMap<String, String>();
-		
+		if (this.elems.size()==0) {
+			out.setHost(this.getHost());
+			out.setPort(this.getPortInteger());
+			out.setUrl(this.getUrl());
+		} else {
+			int pivot = 0;
+			String partial=this.fire;
+			for (Elem e: elems) {
+				int i=0;
+				String value = null;
+				if (e.getLastChar() == null) {
+					value = input.substring(e.getIndex());
+				} else {
+					i = input.indexOf(e.getLastChar(), e.getIndex()+1);
+					value = input.substring(pivot, i);
+				}
+				//input = input.replace(oldChar, newChar)
+				//TODO: FINISH!!!
+				
+				
+			}
+		}
 		return out;
 	}
 	
@@ -78,6 +121,37 @@ public class Rule {
 		return out;
 	}
 	
+	private void uploadElements() {
+		this.elems = new ArrayList<Elem>();
+		int pivot = 0;
+		
+		Elem e = getElementInfo(pivot, this.fire);
+		while(e!=null) {
+			this.elems.add(e);
+			pivot = e.getKey().length() + e.getIndex();
+			e = getElementInfo(pivot, this.fire);
+		}
+	}
+	
+	private Elem getElementInfo(int pivot, String str) {
+		Elem e = null;
+		int i = str.indexOf("{", pivot);
+		if (i==-1) return null;
+		int j = str.indexOf("}", pivot);
+		if (j==-1 || i>j) return null;
+		e = new Elem();
+		e.setIndex(i);
+		e.setKey(str.substring(i,j+1));
+		int lastCharindex = j+1;
+		if (lastCharindex>=str.length()) {	// We are at the end of line
+			e.setLastChar(null);
+		} else {
+			e.setLastChar("" + str.charAt(lastCharindex));
+		}
+			
+		return e;
+	}
+	
 	// Getters and Setters
 	public String getFire() {
 		return fire;
@@ -86,6 +160,7 @@ public class Rule {
 		this.fire = fire;
 		try {
 			this.regExp = this.paramsToStar(fire);
+			uploadElements();
 		} catch (Exception e) {
 			this.regExp = null;
 			e.printStackTrace();
@@ -121,6 +196,31 @@ public class Rule {
 	
 	public String getExpReg() {
 		return this.regExp;
+	}
+	
+	private static class Elem {
+		private String key;
+		private int index;
+		private String lastChar;
+		
+		public String getKey() {
+			return key;
+		}
+		public void setKey(String key) {
+			this.key = key;
+		}
+		public int getIndex() {
+			return index;
+		}
+		public void setIndex(int index) {
+			this.index = index;
+		}
+		public String getLastChar() {
+			return lastChar;
+		}
+		public void setLastChar(String lastChar) {
+			this.lastChar = lastChar;
+		}
 	}
 	
 	private static class Appliance {
