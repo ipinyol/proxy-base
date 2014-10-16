@@ -80,7 +80,7 @@ public class Rule {
 		if (this.elems.size()==0) {
 			out.setHost(this.getHost());
 			out.setPort(this.getPortInteger());
-			out.setUrl(this.getUrl());
+			out.setUrl(input);
 		} else {
 			String hostApp = this.getHost();
 			String portApp = this.getPort();
@@ -247,7 +247,7 @@ public class Rule {
 		}
 	}
 	
-	private static class Appliance {
+	public static class Appliance {
 		private int port;
 		private String host;
 		private String url;

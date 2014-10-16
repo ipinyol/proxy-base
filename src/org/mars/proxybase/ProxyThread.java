@@ -1,6 +1,7 @@
 package org.mars.proxybase;
 
 import java.net.*;
+import java.nio.charset.Charset;
 import java.io.*;
 import java.util.*;
 
@@ -8,10 +9,12 @@ public class ProxyThread extends Thread {
     private Socket socket = null;
     private static final int BUFFER_SIZE = 32768;
     private Properties prop = null; 
-    public ProxyThread(Socket socket, Properties prop) {
+    private RuleEngine ruleEngine=null;
+    public ProxyThread(Socket socket, Properties prop, RuleEngine ruleEngine) {
         super("ProxyThread");
         this.socket = socket;
         this.prop = prop;
+        this.ruleEngine = ruleEngine;
     }
 
     public void run() {
@@ -24,28 +27,35 @@ public class ProxyThread extends Thread {
             Header headerReq = readHeader(in);
             Content contentReq = readContent(in, headerReq);
             
-            // Send data to new port
-            int portDestiny = Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
-            Socket socketDestiny = new Socket();
-            String ipAddress =  prop.getProperty(ProxyBase.DEFAULT_HOST);
-            socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
-            DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
-            
-            writeResponse(headerReq, contentReq, os);
-            os.flush();
-            
-            // Read the response
-            DataInputStream ins=new DataInputStream(new BufferedInputStream(socketDestiny.getInputStream()));
-            Header header = readHeader(ins);
-            Content content = readContent(ins, header);
-            
-            // Write the response
-            writeResponse(header, content, out);
-            out.flush();
-            
-            // Close channels and sockets
-            ins.close();
-            socketDestiny.close();
+            Rule.Appliance app = this.ruleEngine.applyRule(headerReq.getUrl());
+            if (app!=null) { 
+                headerReq.applyAppliance(app);
+                // Send data to new port
+                int portDestiny = app.getPort(); // Integer.parseInt(prop.getProperty(ProxyBase.DEFAULT_PORT_OUT));
+                
+                //System.out.println(portDestiny);
+                Socket socketDestiny = new Socket();
+                String ipAddress =  app.getHost(); // prop.getProperty(ProxyBase.DEFAULT_HOST);
+                //System.out.print(ipAddress);
+                socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
+                DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
+                
+                writeResponse(headerReq, contentReq, os);
+                os.flush();
+                
+                // Read the response
+                DataInputStream ins=new DataInputStream(new BufferedInputStream(socketDestiny.getInputStream()));
+                Header header = readHeader(ins);
+                Content content = readContent(ins, header);
+                
+                // Write the response
+                writeResponse(header, content, out);
+                out.flush();
+                
+                // Close channels and sockets
+                ins.close();
+                socketDestiny.close();
+            }
             if (out != null) {
                 out.close();
             }
@@ -189,7 +199,7 @@ public class ProxyThread extends Thread {
         try {
             byte input = ins.readByte();
             while (oldInput!=endLine[0] || input!=endLine[1]) {
-            	if (len==0) System.out.println(input);
+            	//if (len==0) System.out.println(input);
                 buffer[len] = input;
                 len++;
                 oldInput=input;
@@ -197,7 +207,7 @@ public class ProxyThread extends Thread {
             }
             buffer[len] = input;
             len++;
-            System.out.println("LEN in readBytesUntil:" + len + " Last char:" + input);
+            //System.out.println("LEN in readBytesUntil:" + len + " Last char:" + input);
             out = new byte[len];
             System.arraycopy(buffer, 0, out, 0, len);
         } catch (Exception e) {
@@ -242,8 +252,9 @@ public class ProxyThread extends Thread {
                     } else {
                         // we are in the first line of HTTP protocol
                         String [] tokens = lineStr.split(" ");
-                        out.setOperation(tokens[0]);
-                        out.setUrl(tokens[1]);
+                        out.setOperation(tokens[0].trim());
+                        out.setUrl(tokens[1].trim());
+                        out.setPostfix(tokens[2].trim());
                     }
                     line = new StringBuffer();
                 } else {
@@ -317,12 +328,73 @@ public class ProxyThread extends Thread {
         private Long contentLength = null;      
         private String operation= null;         // GET, POST
         private String url = null;
+        private String postfix = null;
+        
         private boolean isChunked=false;
         
         public void setRawHeaderList(List<byte[]> rawHeaderList) {
             this.rawHeaderList.setRawContentList(rawHeaderList);
         }
         
+        public String getPostfix() {
+            return postfix;
+        }
+
+        /**
+         * Apply the appliance to the header
+         * @param app
+         */
+        public void applyAppliance(Rule.Appliance app) {
+            
+            try {
+                if (this.rawHeaderList== null) throw new Exception ("Header not initialized!");
+                if (this.rawHeaderList.getRawContentList().size()==0) throw new Exception("Header not filled yet");
+                byte[] lineBytes = this.rawHeaderList.getRawContentList().get(0);
+                byte[] rtcl = new byte[2];
+                rtcl[0] = (byte) '\r';
+                rtcl[1] = (byte) '\n';
+                int pivot = getLineUntil(lineBytes,rtcl);
+                //System.out.println("Pivot: " + pivot);
+                //String aux = new String (lineBytes, "US-ASCII");
+                //System.out.println("-----");
+                //System.out.println(aux);
+                
+                String replace = this.operation + " " + app.getUrl() + " " + this.postfix + "\r\n";
+                byte[] replaceBytes = replace.getBytes(Charset.forName("US-ASCII"));
+                //System.out.println("Len replaceBytes: " + replaceBytes.length);
+                
+                byte[] newLineBytes = new byte[replaceBytes.length + lineBytes.length-pivot];
+                //System.out.println("Len newLineBytes: " + newLineBytes.length);
+                //System.out.println("Len lineBytes: " + lineBytes.length);
+                System.arraycopy(replaceBytes, 0, newLineBytes, 0, replaceBytes.length);
+                System.arraycopy(lineBytes, pivot, newLineBytes, replaceBytes.length, lineBytes.length-pivot);
+                this.rawHeaderList.getRawContentList().set(0, newLineBytes);
+                //aux = new String (newLineBytes, "US-ASCII");
+                //System.out.println(aux);
+                //System.out.println("-----End");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        
+        private int getLineUntil(byte[] line, byte[] end) {
+            int pivot = 0;
+            byte lastInput = 0;
+            if (line.length==0) return 0;
+            byte input = line[pivot];
+            pivot++;
+            while(pivot < line.length && (lastInput!=end[0] || input!=end[1])) {
+                lastInput = input;
+                input = line[pivot];
+                pivot++;
+            }
+            return pivot;
+        }
+        
+        public void setPostfix(String postfix) {
+            this.postfix = postfix;
+        }
+
         public List<byte[]> getRawHeaderList() {
             return this.rawHeaderList.getRawContentList();
         }
@@ -360,6 +432,7 @@ public class ProxyThread extends Thread {
         public String getUrl() {
             return url;
         }
+        
         public void setUrl(String url) {
             this.url = url;
         }

@@ -36,9 +36,9 @@ public class ProxyBase {
             System.err.println("Could not listen on port: " + port);
             System.exit(-1);
         }
-
+        RuleEngine ruleEngine = new RuleEngine(prop);
         while (listening) {
-            new ProxyThread(serverSocket.accept(),prop).start();
+            new ProxyThread(serverSocket.accept(),prop, ruleEngine).start();
         }
         serverSocket.close();
     }
