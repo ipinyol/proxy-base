@@ -10,6 +10,7 @@ public class ProxyThread extends Thread {
     private static final int BUFFER_SIZE = 32768;
     private Properties prop = null; 
     private RuleEngine ruleEngine=null;
+    private boolean webSocket = false;
     public ProxyThread(Socket socket, Properties prop, RuleEngine ruleEngine) {
         super("ProxyThread");
         this.socket = socket;
@@ -24,6 +25,7 @@ public class ProxyThread extends Thread {
             DataInputStream in = new DataInputStream(socket.getInputStream());
             
             // Getting incoming data 
+            
             Header headerReq = readHeader(in);
             Content contentReq = readContent(in, headerReq);
             
@@ -51,9 +53,16 @@ public class ProxyThread extends Thread {
                 // Write the response
                 writeResponse(header, content, out);
                 out.flush();
-                
-                // Close channels and sockets
+                if(isHandShakeWebSocket(header)) {
+                    // We start the websocket protocol. So, we keep all the connections until we receive end frame
+                    //in, out: DataInputStream and DataOutputStream of the external connection
+                    //is, os: DataInputStream and DataOutputStream of the internal connection
+                    ProxyWebSocket ws = new ProxyWebSocket(in,out, ins, os);
+                    ws.startProtocol();
+                }
+                // Close channels and sockets since it was an http call
                 ins.close();
+                os.close();
                 socketDestiny.close();
             }
             if (out != null) {
@@ -72,13 +81,74 @@ public class ProxyThread extends Thread {
         }
     }
     
+    /**
+     * Checks if the http request was a hand shake websocket connection
+     * @param header
+     * @return
+     */
+    private boolean isHandShakeWebSocket(Header header) {
+        boolean out = false;
+        String line1 = "101 Switching Protocols";
+        String line2 = "Connection: Upgrade";
+        String line3 = "Sec-WebSocket-Accept";
+        String line4 = "Upgrade: websocket";
+        
+        if (header.getRawHeaderList()==null) return out;
+        if (header.getRawHeaderList().size()==0) return out;
+        byte[] lineByte = header.getRawHeaderList().get(0);
+        
+        byte[] end = new byte[2];
+        end[0]=(byte)'\r';
+        end[1]=(byte)'\n';
+        String l1 = getLineUntil(lineByte, end, 0);
+        String l2 = getLineUntil(lineByte, end, l1.length());
+        String l3 = getLineUntil(lineByte, end, l1.length()+l2.length());
+        String l4 = getLineUntil(lineByte, end, l1.length()+l2.length() + l3.length());
+        
+        String aux = l1+l2+l3+l4;
+        aux=aux.trim().toLowerCase();
+        System.out.println("----");
+        System.out.println(l1);
+        System.out.println(l2);
+        System.out.println(l3);
+        System.out.println(l4);
+        System.out.println("----");
+        out = (aux.indexOf(line1.toLowerCase()) >=0);
+        out = out && (aux.indexOf(line2.toLowerCase()) >=0);
+        out = out && (aux.indexOf(line3.toLowerCase()) >=0);
+        out = out && (aux.indexOf(line4.toLowerCase()) >=0);
+        return out;
+    }
+    
+    private String getLineUntil(byte[] line, byte[] end, int offset) {
+        int pivot = offset;
+        byte lastInput = 0;
+        if (line.length==0) return "";
+        byte input = line[pivot];
+        pivot++;
+        while(pivot < line.length && (lastInput!=end[0] || input!=end[1])) {
+            lastInput = input;
+            input = line[pivot];
+            pivot++;
+        }
+        byte[] aux = new byte[pivot-offset];
+        System.arraycopy(line, offset, aux, 0, pivot-offset);
+        String out="";
+        try {
+            out = new String(aux, "UTF-8");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return out;
+    }
+    
     private void writeResponse(Header header, Content content, DataOutputStream out) {
         List<byte[]> headers = header.getRawHeaderList();
         List<byte[]> contents = content.getRawContentList();
         try {
             for(byte[] arr:headers) {
-            	//String str = new String(arr,"UTF-8");
-            	//System.out.println(str);
+            	String str = new String(arr,"UTF-8");
+            	System.out.println(str);
                 out.write(arr);
             }
             //out.writeBytes("\r\n");
@@ -106,7 +176,7 @@ public class ProxyThread extends Thread {
         return out;
     }
     
-    private void readBufferedContent(DataInputStream ins, long len, Content content) {
+    public static void readBufferedContent(DataInputStream ins, long len, Content content) {
         long pointer = 0;
         try {
             while (len-pointer >=BUFFER_SIZE) {
@@ -132,7 +202,7 @@ public class ProxyThread extends Thread {
      * @param len
      * @return
      */
-    private byte [] readBytes(DataInputStream ins, int len) {
+    public static byte [] readBytes(DataInputStream ins, int len) {
     	int readSoFar = 0;
     	byte[] out = new byte[len];
     	boolean done = false;
@@ -298,7 +368,7 @@ public class ProxyThread extends Thread {
      * @author ipinyol
      *
      */
-    private class Content {
+    public static class Content {
         private List<byte[]> rawContentList = new ArrayList<byte[]>();
         
         public void setRawContentList(List<byte[]> rawContentList) {
@@ -322,7 +392,7 @@ public class ProxyThread extends Thread {
      * @author ipinyol
      *
      */
-    private class Header {
+    public static class Header {
         private Content rawHeaderList = new Content();
         private String host = null;
         private Long contentLength = null;      
