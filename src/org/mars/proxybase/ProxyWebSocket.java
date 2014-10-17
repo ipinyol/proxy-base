@@ -3,12 +3,18 @@ package org.mars.proxybase;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.logging.Logger;
 
 public class ProxyWebSocket {
     DataInputStream in = null;
     DataOutputStream out = null;
     DataInputStream inMid = null;
     DataOutputStream outMid = null;
+    
+    public List<Object> lock = new ArrayList<Object>();
     
     public static byte OP_CLOSE = 0x8;
     public static byte OP_PING = 0x9;
@@ -25,6 +31,8 @@ public class ProxyWebSocket {
         this.out = out;
         this.inMid = inMid;
         this.outMid = outMid;
+        
+        
     }
     
     /**
@@ -32,29 +40,68 @@ public class ProxyWebSocket {
      */
     public void startProtocol() {
         System.out.println("Starting websocket protocol RFC 6455");
-        boolean moving=true;
-        try {
+        WebSocketThread webSocketExternal = new WebSocketThread(in,outMid, lock, "S1");
+        WebSocketThread webSocketInternal = new WebSocketThread(inMid,out, lock, "S2");
+        webSocketExternal.setDaemon(true);
+        webSocketInternal.setDaemon(true);
+        webSocketInternal.start();
+        webSocketExternal.start();
+            
+        while(this.lock.size() ==0 ) {
+            try {
+                Thread.sleep(10000);
+            } catch (Exception e) {
+                System.out.println("Ohhh yes");
+                e.printStackTrace();
+            }
+        }
+        
+        webSocketExternal.terminate();
+        webSocketInternal.terminate();
+        
+    }
+    
+    private static class WebSocketThread extends Thread {
+        private DataInputStream in = null;
+        private DataOutputStream out = null;
+        private List<Object> lock;
+        private boolean moving=true;
+        private String name = null;
+        Logger log = Logger.getLogger("org.mars.proxybase");
+        
+        public WebSocketThread(DataInputStream in, DataOutputStream out, List<Object> lock, String name) {
+            this.in = in;
+            this.out = out;
+            this.lock = lock;
+            this.name = name;
+        }
+        public void terminate() {
+            System.out.println(this.name + ": Terminate!");
+            Thread.interrupted();
+        }
+        
+        public void run() {
+            int i=0;
             while (moving) {
-                // We read the first two bytes that for sure will be there
                 try {
                     Frame inFrame = new Frame();
-                    inFrame.readFrame(this.in);
+                    //System.out.println(this.name + ": Waiting for Frame");
+                    inFrame.readFrame(this.in, this.name, log);
                     inFrame.printInfo();
-                    
-                    inFrame.writeFrame(outMid);
-                    Frame outFrame = new Frame();
-                    outFrame.readFrame(inMid);
-                    outFrame.printInfo();
-                    outFrame.writeFrame(out);
+                    //System.out.println(this.name + ": Writing Frame");
+                    log.info(this.name + ": writing " + i);
+                    inFrame.writeFrame(this.out, this.name, log);
+                    i++;
                     moving=(inFrame.getOpcode()==ProxyWebSocket.OP_CLOSE);
                 } catch (Exception e) {
+                    log.info(this.name + ": Exception!");
                     e.printStackTrace();
                     moving = false;
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+            lock.add(new Object());
         }
+        
     }
     
     private static class Frame {
@@ -68,22 +115,25 @@ public class ProxyWebSocket {
         byte [] maskBytes=null;
         
         public void printInfo() {
-            System.out.println("Byte0: " + this.headBytes[0]);
-            System.out.println("Byte1: " + this.headBytes[1]);
+            /*
+            System.out.printf("B0:  0x%02X\n", this.headBytes[0]);
+            System.out.printf("B1:  0x%02X\n", this.headBytes[1]);
+            System.out.println("HasMask:" + this.hasMask);
             System.out.println("Opcode: " + this.opcode);
             System.out.println("len: " + payloadLength);
+            */
         }
-        public void readFrame(DataInputStream in) throws Exception {
-            System.out.println("In readFrame");
-            this.headBytes[0] =in.readByte();
-            this.headBytes[1] = in.readByte();
-            System.out.println("read " + this.headBytes[0] + "  " + this.headBytes[1]);
+        
+        public void readFrame(DataInputStream in, String name, Logger log) throws Exception {
+            //System.out.println("In readFrame");
+            this.headBytes[0] =ProxyThread.readBytes(in,1)[0];
+            this.headBytes[1] = ProxyThread.readBytes(in,1)[0];
             this.opcode = getOpCode(this.headBytes[0]);
-            System.out.println("Opcode:" + opcode);
+            //System.out.println("Opcode:" + opcode);
             
             this.hasMask = getHasMask(this.headBytes[1]);
             long payload = getPayLoadSmall(this.headBytes[1]);
-            System.out.println("payLoad:" + payload);
+            log.info(name + ": payLoad " + payload);
             if (payload==126) {
                 payloadLenBytes = ProxyThread.readBytes(in, 2);
                 payloadLength = toLong(payloadLenBytes);
@@ -102,7 +152,8 @@ public class ProxyWebSocket {
             
         }
     
-        public void writeFrame(DataOutputStream out) throws Exception {
+        public void writeFrame(DataOutputStream out, String name, Logger log) throws Exception {
+            log.info(name + ": " + this.headBytes);
             out.write(this.headBytes);
             if (payloadLenBytes!=null) {
                 out.write(payloadLenBytes);
@@ -115,6 +166,7 @@ public class ProxyWebSocket {
                 //System.out.println(aa);
                 out.write(arr);
             }
+            out.flush();
         }
         
         private static long toLong(byte[] b) {
@@ -123,14 +175,20 @@ public class ProxyWebSocket {
             return bb.getLong();
         }
         private int getPayLoadSmall(byte b) {
-            byte mask = (byte)0x3F; //01111111b
+            byte mask = (byte)0x3F; //10000000b
+            //System.out.printf("Mask:  0x%02X\n", mask);
+            //System.out.printf("byte:  0x%02X\n", b);
+            
             return mask & b;
         }
         
         private boolean getHasMask(byte b) {
-            byte mask = (byte)0x40; //10000000b
-            int val = mask & b;
-            return (val!=0);
+            byte mask = (byte)0x80; //10000000b
+            //System.out.printf("Mask:  0x%02X\n", mask);
+            //System.out.printf("Byte:  0x%02X\n", b);
+            byte ret = (byte) (mask & b);
+            //System.out.printf("Ret:  0x%02X\n", ret);
+            return (ret!=0);
         }
         
         private byte getOpCode(byte b) {

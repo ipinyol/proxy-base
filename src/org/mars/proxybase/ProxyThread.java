@@ -39,7 +39,7 @@ public class ProxyThread extends Thread {
                 Socket socketDestiny = new Socket();
                 String ipAddress =  app.getHost(); // prop.getProperty(ProxyBase.DEFAULT_HOST);
                 //System.out.print(ipAddress);
-                socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny), 5000);
+                socketDestiny.connect(new InetSocketAddress(ipAddress, portDestiny));
                 DataOutputStream os = new DataOutputStream(socketDestiny.getOutputStream());
                 
                 writeResponse(headerReq, contentReq, os);
@@ -213,7 +213,7 @@ public class ProxyThread extends Thread {
 	    			done=true;
 	    		} else {
 	    			readSoFar += readNow;
-	    			Thread.sleep(1); // Sleep for one millisecond
+	    			Thread.sleep(100); // Sleep for one millisecond
 	    			readNow = ins.read(out, readSoFar, len-readSoFar);
 	    		}
 	    	}
