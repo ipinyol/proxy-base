@@ -1,4 +1,4 @@
 proxy-base
 ==========
 
-A simple configurable http proxy 
+A content-based http proxy that accepts websockets. 
