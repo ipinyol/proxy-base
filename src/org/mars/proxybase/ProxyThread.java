@@ -107,12 +107,14 @@ public class ProxyThread extends Thread {
         
         String aux = l1+l2+l3+l4;
         aux=aux.trim().toLowerCase();
+        /*
         System.out.println("----");
         System.out.println(l1);
         System.out.println(l2);
         System.out.println(l3);
         System.out.println(l4);
         System.out.println("----");
+        */
         out = (aux.indexOf(line1.toLowerCase()) >=0);
         out = out && (aux.indexOf(line2.toLowerCase()) >=0);
         out = out && (aux.indexOf(line3.toLowerCase()) >=0);
@@ -147,8 +149,8 @@ public class ProxyThread extends Thread {
         List<byte[]> contents = content.getRawContentList();
         try {
             for(byte[] arr:headers) {
-            	String str = new String(arr,"UTF-8");
-            	System.out.println(str);
+            	//String str = new String(arr,"UTF-8");
+            	//System.out.println(str);
                 out.write(arr);
             }
             //out.writeBytes("\r\n");

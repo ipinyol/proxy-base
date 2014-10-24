@@ -44,26 +44,17 @@ public class ProxyWebSocket {
         WebSocketThread webSocketInternal = new WebSocketThread(inMid,out, lock, "S2");
         webSocketInternal.start();
         webSocketExternal.start();
-        try {
-        	webSocketInternal.join();
-        } catch (Exception e) {
-        	e.printStackTrace();
-        }
-        webSocketExternal.terminate();
-        webSocketInternal.terminate();
-        /*
+
         while(this.lock.size() ==0 ) {
             try {
-                //Thread.sleep(10000);
+                Thread.sleep(10000);
             } catch (Exception e) {
-                System.out.println("Ohhh yes");
                 e.printStackTrace();
             }
         }
         
         webSocketExternal.terminate();
         webSocketInternal.terminate();
-        */
     }
     
     private static class WebSocketThread extends Thread {
@@ -90,14 +81,11 @@ public class ProxyWebSocket {
             while (moving) {
                 try {
                     Frame inFrame = new Frame();
-                    //System.out.println(this.name + ": Waiting for Frame");
                     inFrame.readFrame(this.in, this.name, log);
                     inFrame.printInfo();
-                    //System.out.println(this.name + ": Writing Frame");
-                    //log.info(this.name + ": writing " + i);
                     inFrame.writeFrame(this.out, this.name, log);
                     i++;
-                    moving=(inFrame.getOpcode()==ProxyWebSocket.OP_CLOSE);
+                    moving=(inFrame.getOpcode()!=ProxyWebSocket.OP_CLOSE);
                 } catch (Exception e) {
                     //log.info(this.name + ": Exception!");
                     e.printStackTrace();
@@ -138,7 +126,7 @@ public class ProxyWebSocket {
             
             this.hasMask = getHasMask(this.headBytes[1]);
             long payload = getPayLoadSmall(this.headBytes[1]);
-            //log.info(name + ": payLoad " + payload);
+            //System.out.println("length payload in: " + payload);
             if (payload==126) {
                 payloadLenBytes = ProxyThread.readBytes(in, 2);
                 payloadLength = toLong(payloadLenBytes);
@@ -167,8 +155,9 @@ public class ProxyWebSocket {
                 out.write(maskBytes);
             }
             for(byte[] arr:content.getRawContentList()) {
-                String aa = new String(arr,"UTF-8");
-                System.out.println(aa);
+                //String aa = new String(arr,"UTF-8");
+                //System.out.println(aa);
+            	//System.out.println("length payload out: " + arr.length);
                 out.write(arr);
             }
             out.flush();
@@ -176,10 +165,25 @@ public class ProxyWebSocket {
         }
         
         private static long toLong(byte[] b) {
-            ByteBuffer bb = ByteBuffer.allocate(b.length);
-            bb.put(b);
+        	
+        	int longSize = Long.SIZE / Byte.SIZE;
+        	int missing = longSize-b.length;
+        	byte[] num = null;
+        	if (missing<=0) {
+        		num = b;
+        	} else {
+        		num = new byte[longSize];
+        		for(int i = 0; i<missing; i++) {
+        			num[i]=0x00;
+        		}
+        		System.arraycopy(b, 0, num, missing, b.length);
+        	}
+        	ByteBuffer bb = ByteBuffer.allocate(num.length);
+            bb.put(num);
+            bb.position(0);
             return bb.getLong();
         }
+        
         private int getPayLoadSmall(byte b) {
             byte mask = (byte)0x7F; //01111111b
             //x%02X\n", mask);
