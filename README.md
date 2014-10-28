@@ -46,6 +46,8 @@ The system will listen to the specified port. If no port is specified, the syste
 
     org/mars/proxybase/config.properties
 
+where 
+
     dhost: the default destiny host if no host is informed in the rules
     dport_in: The default listening port of the system if no port is informed when executed
     dport_out: The default destiny port if no port is specified in an applied rule
